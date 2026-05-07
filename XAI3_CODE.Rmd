@@ -1,0 +1,349 @@
+---
+title: "XAI 3"
+output:
+  word_document: default
+  html_document: default
+date: "2026-05-07"
+---
+
+```{r}
+library(randomForest)
+library(pdp)
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+```
+
+1. Data preprocessing and Summary statistics - Bike rentals
+```{r}
+
+# Load daily bike rental dataset
+bike_data <- day
+
+# Convert date variable to Date format
+bike_data$dteday <- as.Date(bike_data$dteday)
+
+# Check missing values
+missing_values <- colSums(is.na(bike_data))
+missing_values
+
+# Remove missing values if any
+bike_data <- na.omit(bike_data)
+
+# Create a numerical variable representing days since 2011
+bike_data <- bike_data %>%
+  mutate(days_since_2011 = as.numeric(dteday - min(dteday)))
+
+# Select variables needed for the exercise
+bike_model_data <- bike_data %>%
+  select(cnt, days_since_2011, temp, hum, windspeed)
+
+# Check final dataset
+summary(bike_model_data)
+```
+
+```{r}
+
+summary_table_bike <- bike_model_data %>%
+  summarise(
+    n_observations = n(),
+    missing_values = sum(is.na(.)),
+    min_days = min(days_since_2011),
+    max_days = max(days_since_2011),
+    min_temp = min(temp),
+    max_temp = max(temp),
+    min_hum = min(hum),
+    max_hum = max(hum),
+    min_windspeed = min(windspeed),
+    max_windspeed = max(windspeed),
+    min_cnt = min(cnt),
+    max_cnt = max(cnt)
+  )
+
+summary_table_bike
+```
+3. Random Forest model - Bike rentals
+```{r}
+
+
+library(randomForest)
+
+set.seed(123)
+
+bike_model <- randomForest(
+  cnt ~ days_since_2011 + temp + hum + windspeed,
+  data = bike_model_data,
+  ntree = 300,
+  importance = TRUE
+)
+
+# Model summary
+print(bike_model)
+
+```
+```{r}
+importance_bike <- importance(bike_model)
+
+importance_bike_table <- data.frame(
+  Variable = rownames(importance_bike),
+  IncMSE = importance_bike[, "%IncMSE"],
+  IncNodePurity = importance_bike[, "IncNodePurity"]
+)
+
+importance_bike_table <- importance_bike_table %>%
+  arrange(desc(IncMSE))
+
+importance_bike_table
+```
+
+4. One-dimensional PDPs - Bike rentals
+
+```{r}
+# -------------------------------
+# 4. One-dimensional PDPs
+# -------------------------------
+
+# PDP for days since 2011
+pdp_days <- partial(
+  bike_model,
+  pred.var = "days_since_2011",
+  grid.resolution = 20
+)
+
+plot_days <- autoplot(pdp_days) +
+  ggtitle("PDP - Days since 2011") +
+  theme_minimal()
+
+
+# PDP for temperature
+pdp_temp <- partial(
+  bike_model,
+  pred.var = "temp",
+  grid.resolution = 20
+)
+
+plot_temp <- autoplot(pdp_temp) +
+  ggtitle("PDP - Temperature") +
+  theme_minimal()
+
+
+# PDP for humidity
+pdp_hum <- partial(
+  bike_model,
+  pred.var = "hum",
+  grid.resolution = 20
+)
+
+plot_hum <- autoplot(pdp_hum) +
+  ggtitle("PDP - Humidity") +
+  theme_minimal()
+
+
+# PDP for wind speed
+pdp_wind <- partial(
+  bike_model,
+  pred.var = "windspeed",
+  grid.resolution = 20
+)
+
+plot_wind <- autoplot(pdp_wind) +
+  ggtitle("PDP - Wind speed") +
+  theme_minimal()
+
+
+# Display plots
+print(plot_days)
+print(plot_temp)
+print(plot_hum)
+print(plot_wind)
+```
+
+
+5. Two-dimensional PDP - Bike rentals
+```{r}
+# PDP 2D con temperatura y humedad
+pdp_2d <- partial(bike_model,
+                  pred.var = c("temp", "hum"),
+                  grid.resolution = 20,
+                  progress = "text")
+# Visualizar como mapa de calor
+pdp_plot <- ggplot(pdp_2d, aes(x = temp, y = hum, fill = yhat)) +
+  geom_tile(width = 0.02, height = 0.02) +  # ancho/alto para que no haya huecos
+  scale_fill_viridis_c(option = "plasma") +
+  labs(title = "PDP 2D - Influencia conjunta de temperatura y humedad",
+       x = "Temperatura normalizada",
+       y = "Humedad",
+       fill = "Alquileres predichos") +
+  theme_minimal()
+
+print(pdp_plot)
+```
+ 6. Density distributions - Bike rentals
+
+```{r}
+# Tomar una muestra aleatoria para que sea más rápido
+set.seed(123)  # para reproducibilidad
+bike_sample <- sample_n(bike_data, 150)
+# Densidad de temperatura
+ggplot(bike_sample, aes(x = temp)) +
+  geom_density(fill = "skyblue") +
+  labs(title = "Distribución de temperatura")
+
+# Densidad de humedad
+ggplot(bike_sample, aes(x = hum)) +
+  geom_density(fill = "lightgreen") +
+  labs(title = "Distribución de humedad")
+
+```
+7. Data preprocessing - House prices
+
+```{r}
+house_data <- kc_house_data
+# Convert date variable to Date format
+house_data$date <- as.Date(house_data$date)
+
+# Check missing values
+colSums(is.na(house_data))
+
+# Remove possible missing values
+house_data <- na.omit(house_data)
+
+# Select variables required for the exercise
+house_model_data <- house_data %>%
+  select(price, bedrooms, bathrooms, sqft_living, sqft_lot, floors, yr_built)
+
+# Remove unrealistic values if present
+house_model_data <- house_model_data %>%
+  filter(
+    price > 0,
+    bedrooms > 0,
+    bathrooms > 0,
+    sqft_living > 0,
+    sqft_lot > 0,
+    floors > 0,
+    yr_built > 0
+  )
+
+# Take a random sample to reduce computational cost
+set.seed(123)
+house_sample <- sample_n(house_model_data, 300)
+
+# Summary of final dataset
+summary(house_sample)
+
+```
+8. Random Forest model - House prices
+
+
+```{r}
+
+set.seed(123)
+
+house_model <- randomForest(
+  price ~ bedrooms + bathrooms + sqft_living + sqft_lot + floors + yr_built,
+  data = house_sample,
+  ntree = 300,
+  importance = TRUE
+)
+
+print(house_model)
+
+
+```
+9. Variable importance - House prices
+```{r}
+
+
+# Calculate variable importance
+importance_house <- importance(house_model)
+
+# Convert importance matrix into dataframe
+importance_house_table <- data.frame(
+  Variable = rownames(importance_house),
+  importance_house,
+  row.names = NULL
+)
+
+# Display importance table
+print(importance_house_table)
+```
+
+10. One-dimensional PDPs - House prices
+```{r}
+
+
+# PDP for bedrooms
+pdp_bed <- partial(
+  house_model,
+  pred.var = "bedrooms",
+  grid.resolution = 10
+)
+
+plot_bed <- autoplot(pdp_bed) +
+  labs(
+    title = "PDP - Bedrooms",
+    x = "Number of bedrooms",
+    y = "Predicted house price"
+  ) +
+  theme_minimal()
+
+
+# PDP for bathrooms
+pdp_bath <- partial(
+  house_model,
+  pred.var = "bathrooms",
+  grid.resolution = 10
+)
+
+plot_bath <- autoplot(pdp_bath) +
+  labs(
+    title = "PDP - Bathrooms",
+    x = "Number of bathrooms",
+    y = "Predicted house price"
+  ) +
+  theme_minimal()
+
+
+# PDP for sqft_living
+pdp_sqft <- partial(
+  house_model,
+  pred.var = "sqft_living",
+  grid.resolution = 20
+)
+
+plot_sqft <- autoplot(pdp_sqft) +
+  labs(
+    title = "PDP - Sqft Living",
+    x = "Living area (sqft)",
+    y = "Predicted house price"
+  ) +
+  theme_minimal()
+
+
+# PDP for floors
+pdp_floors <- partial(
+  house_model,
+  pred.var = "floors",
+  grid.resolution = 10
+)
+
+plot_floors <- autoplot(pdp_floors) +
+  labs(
+    title = "PDP - Floors",
+    x = "Number of floors",
+    y = "Predicted house price"
+  ) +
+  theme_minimal()
+
+
+# Display plots
+print(plot_bed)
+print(plot_bath)
+print(plot_sqft)
+print(plot_floors)
+```
+
+
+
+
